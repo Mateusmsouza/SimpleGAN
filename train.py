@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader
-from torch.optim import SGD
+from torch.optim import SGD, Adam
 from torchvision import transforms
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -15,7 +15,7 @@ from models.generator import Generator
 
 bath_size = 32
 epochs = 100
-learning_rate = 1e-1
+learning_rate = 2e-3
 
 train_transforms = transforms.Compose(
     [
@@ -51,22 +51,26 @@ def generator_loss(synthetic_images, descriminator):
     return loss
 
 
-def train_loop(epochs: int, training_dataloader, generator, descriminator, optimizer):
+def train_loop(epochs: int, training_dataloader, generator, descriminator, optimizer_d, optimizer_g):
     for epoch in range(epochs):
-
-
-        
+        backprop_g = (epoch % 2) == 0
         for data, _ in training_dataloader:
             z = torch.randn(data.shape)
             synthetic_images = generator(z)
-            optimizer.zero_grad()
-            loss_dc = descriminator_loss(data, synthetic_images, descriminator)
-            loss_gn = generator_loss(synthetic_images, descriminator)
-            loss_dc.backward(retain_graph=True)
-            loss_gn.backward()
-            optimizer.step()
-        #display_samples(generator(torch.randn([9, 1, 28, 28])))
-        print(f'Epoch {epoch}: Descriminator loss: {loss_dc.item()}, Generator loss: {loss_gn.item()}')
+
+            if backprop_g:
+                optimizer_g.zero_grad()
+                loss_gn = generator_loss(synthetic_images, descriminator)
+                loss_gn.backward() # retain_graph=True
+                optimizer_g.step()
+            else:
+                optimizer_d.zero_grad()
+                loss_dc = descriminator_loss(data, synthetic_images, descriminator)
+                loss_dc.backward()
+                optimizer_d.step()
+        if backprop_g:
+            display_samples(generator(torch.randn([9, 1, 28, 28])))
+        print(f'Epoch {epoch}: Descriminator loss: {loss_dc.item() if not backprop_g else None}, Generator loss: {loss_gn.item() if backprop_g else None}')
         #print(f'Descriminator weights: fc1 {descriminator.fc1.weight} fc2 {descriminator.fc2.weight}')
 
 if __name__ == '__main__':
@@ -74,8 +78,6 @@ if __name__ == '__main__':
     training_dataloader = DataLoader(dataset, batch_size=bath_size, shuffle=True)
     descriminator = Descriminator()
     generator = Generator()
-    optimizer = SGD([
-        {'params': descriminator.parameters()},
-        {'params': generator.parameters()}],
-        lr=learning_rate)
-    train_loop(epochs=epochs, training_dataloader=training_dataloader, generator=generator, descriminator=descriminator, optimizer=optimizer)
+    optimizer_d = Adam(descriminator.parameters(), lr=learning_rate)
+    optimizer_g = Adam(generator.parameters(), lr=learning_rate)
+    train_loop(epochs=epochs, training_dataloader=training_dataloader, generator=generator, descriminator=descriminator, optimizer_d=optimizer_d, optimizer_g=optimizer_g)
