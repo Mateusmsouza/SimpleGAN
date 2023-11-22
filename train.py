@@ -15,7 +15,8 @@ from models.generator import Generator
 
 bath_size = 32
 epochs = 100
-learning_rate = 2e-3
+learning_rate = 3e-4
+image_dim = 784 # 28 * 28
 
 train_transforms = transforms.Compose(
     [
@@ -38,46 +39,52 @@ def display_samples(image_matrix, num_samples=9, image_width=28, image_length=28
         ax[i,j].imshow(image_matrix.detach().numpy()[k,:].reshape(image_width, image_length), cmap='Greys_r')
     plt.show()
 
-def descriminator_loss(images, synthetic_images, descriminator):
-    im_out = descriminator(images)
-    sim_out = descriminator(synthetic_images)
-    im_loss = F.binary_cross_entropy(im_out, torch.ones(im_out.shape))
-    sim_loss = F.binary_cross_entropy(sim_out, torch.zeros(sim_out.shape))
-    return im_loss + sim_loss
-
-def generator_loss(synthetic_images, descriminator):
-    sim_out = descriminator(synthetic_images)
-    loss = F.binary_cross_entropy(sim_out, torch.ones(sim_out.shape))
-    return loss
-
+criterion = nn.BCELoss()
 
 def train_loop(epochs: int, training_dataloader, generator, descriminator, optimizer_d, optimizer_g):
     for epoch in range(epochs):
+        
         backprop_g = (epoch % 2) == 0
         for data, _ in training_dataloader:
-            z = torch.randn(data.shape)
+            data = data.view(-1, 784)
+            z = torch.randn(data.shape[0], data.shape)
             synthetic_images = generator(z)
+            discriminator_output_real = descriminator(data).view(-1)
+            loss_d = criterion(discriminator_output_real, torch.ones_like(discriminator_output_real))
+            discriminator_output_synthetic = descriminator(synthetic_images).view(-1)
+            loss_d_synthetic = criterion(discriminator_output_synthetic, torch.zeros_like(
+                discriminator_output_synthetic))
+            loss_d = (loss_d + loss_d_synthetic) / 2
 
-            if backprop_g:
-                optimizer_g.zero_grad()
-                loss_gn = generator_loss(synthetic_images, descriminator)
-                loss_gn.backward() # retain_graph=True
-                optimizer_g.step()
-            else:
-                optimizer_d.zero_grad()
-                loss_dc = descriminator_loss(data, synthetic_images, descriminator)
-                loss_dc.backward()
-                optimizer_d.step()
+            descriminator.zero_grad()
+            loss_d.backward(retain_graph=True)
+            optimizer_d.step()
+
+            output = descriminator(synthetic_images).view(-1)
+            loss_g = criterion(output, torch.ones_like(output))
+            generator.zero_grad()
+            loss_g.backward()
+            optimizer_g.step()
+        #     if backprop_g:
+        #         optimizer_g.zero_grad()
+        #         loss_gn = criterion(synthetic_images, descriminator)
+        #         loss_gn.backward() # retain_graph=True
+        #         optimizer_g.step()
+        #     else:
+        #         optimizer_d.zero_grad()
+        #         loss_dc = criterion(data, synthetic_images, descriminator)
+        #         loss_dc.backward()
+        #         optimizer_d.step()
         if backprop_g:
-            display_samples(generator(torch.randn([9, 1, 28, 28])))
-        print(f'Epoch {epoch}: Descriminator loss: {loss_dc.item() if not backprop_g else None}, Generator loss: {loss_gn.item() if backprop_g else None}')
+            display_samples(generator(torch.randn([9, 784])))
+        print(f'Epoch {epoch}: Descriminator loss: {loss_d.item() if not backprop_g else None}, Generator loss: {loss_g.item() if backprop_g else None}')
         #print(f'Descriminator weights: fc1 {descriminator.fc1.weight} fc2 {descriminator.fc2.weight}')
 
 if __name__ == '__main__':
     dataset = MNIST('./datasets/mnist', train=True, download=True, transform=train_transforms)
     training_dataloader = DataLoader(dataset, batch_size=bath_size, shuffle=True)
-    descriminator = Descriminator()
-    generator = Generator()
+    descriminator = Descriminator(image_dim)
+    generator = Generator(image_dim)
     optimizer_d = Adam(descriminator.parameters(), lr=learning_rate)
     optimizer_g = Adam(generator.parameters(), lr=learning_rate)
     train_loop(epochs=epochs, training_dataloader=training_dataloader, generator=generator, descriminator=descriminator, optimizer_d=optimizer_d, optimizer_g=optimizer_g)

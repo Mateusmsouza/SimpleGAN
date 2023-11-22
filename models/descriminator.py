@@ -5,17 +5,15 @@ import torch.nn.functional as F
 
 class Descriminator(nn.Module):
 
-    def __init__(self, image_size: int = 28):
+    def __init__(self, image_dimension):
         super(Descriminator, self).__init__()
-        self.image_size = image_size
-        
-        self.fc1 = nn.Linear(image_size, image_size)
-        self.fc2 = nn.Linear(image_size, image_size)
+        self.fc_seq = nn.Sequential(
+            nn.Linear(image_dimension, 128),
+            nn.ReLU(),
+            nn.Linear(128, 1),
+            nn.Sigmoid()
+        )
 
     def forward(self, x):
         '''x is image'''
-        output = self.fc1(x)
-        output = F.relu(output)
-        output = self.fc2(output)
-        output = F.sigmoid(output)
-        return output
+        return self.fc_seq(x)

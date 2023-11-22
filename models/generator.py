@@ -5,16 +5,14 @@ import torch.nn.functional as F
 
 class Generator(nn.Module):
 
-    def __init__(self, image_size: int = 28):
+    def __init__(self, image_dimension):
         super(Generator, self).__init__()
-        self.image_size = image_size
-        
-        self.fc1 = nn.Linear(image_size, image_size)
-        self.fc2 = nn.Linear(image_size, image_size)
+        self.fc_seq = nn.Sequential(
+            nn.Linear(image_dimension, 256),
+            nn.ReLU(),
+            nn.Linear(256, image_dimension)
+        )
 
     def forward(self, z):
         '''z is noise'''
-        x = self.fc1(z)
-        x = F.relu(x)
-        x = self.fc2(x)
-        return x
+        return self.fc_seq(z)
