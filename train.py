@@ -7,7 +7,7 @@ from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader
 from torch.optim import SGD, Adam
 from torchvision import transforms
-import torch.nn.functional as F
+from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
 from models.descriminator import Descriminator
@@ -24,30 +24,32 @@ train_transforms = transforms.Compose(
     ]
 )
 
-def display_samples(image_matrix, num_samples=9, image_width=28, image_length=28):
-    size_figure_grid = int(math.sqrt(num_samples))
-    fig, ax = plt.subplots(3, 3, figsize=(6, 6))
-    for i, j in itertools.product(range(size_figure_grid), range(size_figure_grid)):
-        ax[i,j].get_xaxis().set_visible(False)
-        ax[i,j].get_yaxis().set_visible(False)
-    # reshaped_generated_images = fake_images.view(batch_size, 28, 28)
+# def display_samples(image_matrix, num_samples=9, image_width=28, image_length=28):
+#     size_figure_grid = int(math.sqrt(num_samples))
+#     fig, ax = plt.subplots(3, 3, figsize=(6, 6))
+#     for i, j in itertools.product(range(size_figure_grid), range(size_figure_grid)):
+#         ax[i,j].get_xaxis().set_visible(False)
+#         ax[i,j].get_yaxis().set_visible(False)
+#     # reshaped_generated_images = fake_images.view(batch_size, 28, 28)
     
-    for k in range(num_samples):
-        i = k // size_figure_grid
-        j = k % size_figure_grid
-        ax[i,j].cla()
-        ax[i,j].imshow(image_matrix.detach().numpy()[k,:].reshape(image_width, image_length), cmap='Greys_r')
-    plt.show()
+#     for k in range(num_samples):
+#         i = k // size_figure_grid
+#         j = k % size_figure_grid
+#         ax[i,j].cla()
+#         ax[i,j].imshow(image_matrix.detach().numpy()[k,:].reshape(image_width, image_length), cmap='Greys_r')
+#     plt.show()
 
 criterion = nn.BCELoss()
-
+writer = SummaryWriter()
+fixed_noise = torch.randn(1, image_dim)
 def train_loop(epochs: int, training_dataloader, generator, descriminator, optimizer_d, optimizer_g):
     for epoch in range(epochs):
         
         backprop_g = (epoch % 2) == 0
         for data, _ in training_dataloader:
             data = data.view(-1, 784)
-            z = torch.randn(data.shape[0], data.shape)
+            #print(data.shape[0])
+            z = torch.randn(data.shape[0], image_dim)
             synthetic_images = generator(z)
             discriminator_output_real = descriminator(data).view(-1)
             loss_d = criterion(discriminator_output_real, torch.ones_like(discriminator_output_real))
@@ -75,10 +77,11 @@ def train_loop(epochs: int, training_dataloader, generator, descriminator, optim
         #         loss_dc = criterion(data, synthetic_images, descriminator)
         #         loss_dc.backward()
         #         optimizer_d.step()
-        if backprop_g:
-            display_samples(generator(torch.randn([9, 784])))
-        print(f'Epoch {epoch}: Descriminator loss: {loss_d.item() if not backprop_g else None}, Generator loss: {loss_g.item() if backprop_g else None}')
-        #print(f'Descriminator weights: fc1 {descriminator.fc1.weight} fc2 {descriminator.fc2.weight}')
+        print(f"logging epoch {epoch}")
+        with torch.no_grad():
+            writer.add_scalar("Loss/train-discriminator", loss_d.item(), epoch)
+            writer.add_scalar("Loss/train-generator", loss_g.item(), epoch)
+            writer.add_image("Generated image", generator(fixed_noise).reshape(1, 28, 28), epoch)
 
 if __name__ == '__main__':
     dataset = MNIST('./datasets/mnist', train=True, download=True, transform=train_transforms)
