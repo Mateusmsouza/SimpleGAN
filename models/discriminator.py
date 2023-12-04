@@ -3,10 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-class Descriminator(nn.Module):
+class Discriminator(nn.Module):
 
     def __init__(self, image_dimension):
-        super(Descriminator, self).__init__()
+        super(Discriminator, self).__init__()
         self.fc_seq = nn.Sequential(
             nn.Linear(image_dimension, 128),
             nn.ReLU(),

@@ -5,17 +5,17 @@ import torch
 import torch.nn as nn
 from torchvision.datasets import MNIST
 from torch.utils.data import DataLoader
-from torch.optim import SGD, Adam
+from torch.optim import Adam
 from torchvision import transforms
 from torch.utils.tensorboard import SummaryWriter
-import matplotlib.pyplot as plt
 
-from models.descriminator import Descriminator
+from models.discriminator import Discriminator
 from models.generator import Generator
 
 bath_size = 32
-epochs = 100
+epochs = 50
 learning_rate = 3e-4
+z_dim = 64
 image_dim = 784 # 28 * 28
 
 train_transforms = transforms.Compose(
@@ -41,42 +41,30 @@ train_transforms = transforms.Compose(
 
 criterion = nn.BCELoss()
 writer = SummaryWriter()
-fixed_noise = torch.randn(1, image_dim)
-def train_loop(epochs: int, training_dataloader, generator, descriminator, optimizer_d, optimizer_g):
+fixed_noise = torch.randn(1, z_dim)
+def train_loop(epochs: int, training_dataloader, generator, discriminator, optimizer_d, optimizer_g):
     for epoch in range(epochs):
-        
-        backprop_g = (epoch % 2) == 0
         for data, _ in training_dataloader:
             data = data.view(-1, 784)
             #print(data.shape[0])
-            z = torch.randn(data.shape[0], image_dim)
+            z = torch.randn(data.shape[0], z_dim)
             synthetic_images = generator(z)
-            discriminator_output_real = descriminator(data).view(-1)
+            discriminator_output_real = discriminator(data).view(-1)
             loss_d = criterion(discriminator_output_real, torch.ones_like(discriminator_output_real))
-            discriminator_output_synthetic = descriminator(synthetic_images).view(-1)
+            discriminator_output_synthetic = discriminator(synthetic_images).view(-1)
             loss_d_synthetic = criterion(discriminator_output_synthetic, torch.zeros_like(
                 discriminator_output_synthetic))
             loss_d = (loss_d + loss_d_synthetic) / 2
 
-            descriminator.zero_grad()
+            discriminator.zero_grad()
             loss_d.backward(retain_graph=True)
             optimizer_d.step()
 
-            output = descriminator(synthetic_images).view(-1)
+            output = discriminator(synthetic_images).view(-1)
             loss_g = criterion(output, torch.ones_like(output))
             generator.zero_grad()
             loss_g.backward()
             optimizer_g.step()
-        #     if backprop_g:
-        #         optimizer_g.zero_grad()
-        #         loss_gn = criterion(synthetic_images, descriminator)
-        #         loss_gn.backward() # retain_graph=True
-        #         optimizer_g.step()
-        #     else:
-        #         optimizer_d.zero_grad()
-        #         loss_dc = criterion(data, synthetic_images, descriminator)
-        #         loss_dc.backward()
-        #         optimizer_d.step()
         print(f"logging epoch {epoch}")
         with torch.no_grad():
             writer.add_scalar("Loss/train-discriminator", loss_d.item(), epoch)
@@ -86,8 +74,8 @@ def train_loop(epochs: int, training_dataloader, generator, descriminator, optim
 if __name__ == '__main__':
     dataset = MNIST('./datasets/mnist', train=True, download=True, transform=train_transforms)
     training_dataloader = DataLoader(dataset, batch_size=bath_size, shuffle=True)
-    descriminator = Descriminator(image_dim)
-    generator = Generator(image_dim)
-    optimizer_d = Adam(descriminator.parameters(), lr=learning_rate)
+    discriminator = Discriminator(image_dim)
+    generator = Generator(z_dim, image_dim)
+    optimizer_d = Adam(discriminator.parameters(), lr=learning_rate)
     optimizer_g = Adam(generator.parameters(), lr=learning_rate)
-    train_loop(epochs=epochs, training_dataloader=training_dataloader, generator=generator, descriminator=descriminator, optimizer_d=optimizer_d, optimizer_g=optimizer_g)
+    train_loop(epochs=epochs, training_dataloader=training_dataloader, generator=generator, discriminator=discriminator, optimizer_d=optimizer_d, optimizer_g=optimizer_g)
